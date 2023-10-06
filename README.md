@@ -9,5 +9,9 @@ pip3 install -r requirements.txt
 ```
 
 ```
+cp settings.template.py settings.py
+```
+
+```
 python3 main.py
 ```
