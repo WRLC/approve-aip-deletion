@@ -13,5 +13,5 @@ cp settings.template.py settings.py
 ```
 
 ```
-python3 main.py
+python3 main.py <reason for deletion>
 ```
