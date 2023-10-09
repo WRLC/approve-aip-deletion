@@ -19,8 +19,8 @@ build/
 .idea/
 docs/_build/
 .vscode
-log
 *.sql
+log/*.log
 
 # Coverage reports
 htmlcov/
