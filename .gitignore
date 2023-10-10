@@ -20,7 +20,7 @@ build/
 docs/_build/
 .vscode
 *.sql
-log/*.log
+log/*.log*
 
 # Coverage reports
 htmlcov/

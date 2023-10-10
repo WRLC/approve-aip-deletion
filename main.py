@@ -65,41 +65,33 @@ def main():
     # xpaths to elements in first row of table
     file = '/html/body/div[2]/div/div[1]/table/tbody/tr[1]/td[1]'  # file name cell
     old_aip = ''  # old file
-    reason = '/html/body/div[2]/div/div[1]/table/tbody/tr[1]/td[7]/form/p/textarea'  # reason field
-    approve = '/html/body/div[2]/div/div[1]/table/tbody/tr[1]/td[7]/form/input[2]'  # approve button
+    reason_field = '/html/body/div[2]/div/div[1]/table/tbody/tr[1]/td[7]/form/p/textarea'  # reason field
+    approve_button = '/html/body/div[2]/div/div[1]/table/tbody/tr[1]/td[7]/form/input[2]'  # approve button
 
     packages_to_delete = True  # flag to keep the loop going
 
     # while there are packages to delete
     while packages_to_delete is True:
+
         driver.get(settings.am_ss_url + 'packages/package_delete_request/')  # navigate to package delete request page
 
-        try:  # try to find the file name cell
+        # wait the ready state to be complete
+        WebDriverWait(driver=driver, timeout=10).until(
+            lambda x: x.execute_script('return document.readyState === "complete"')
+        )
+
+        if check_if_element_exists(driver, reason_field) is True \
+                and check_if_element_exists(driver, approve_button) is True:
             aip = driver.find_element(By.XPATH, file).text  # get the file name
+            reason = driver.find_element(By.XPATH, reason_field)  # get the reason text
+            approve = driver.find_element(By.XPATH, approve_button)  # get the approve button text
+            reason.send_keys(reason_text)  # find field and insert text
+            approve.click()  # find approve button and click
+            aip_log.info('Deleting {}'.format(aip))  # log that the package was deleted
+            count += 1  # increment count
+            continue  # continue to the next iteration of the loop
 
-            if aip != old_aip:  # make sure file name is different from the last one
-                if old_aip != '':  # if this is not the first iteration of the loop
-                    count += 1  # increment the count
-                    aip_log.info('Package deleted: {}'.format(old_aip))  # log the name of the package that was deleted
-
-                try:  # try to delete the package
-                    driver.find_element(By.XPATH, reason).send_keys(reason_text)  # find reason field and insert text
-                    driver.find_element(By.XPATH, approve).click()  # find approve button and click
-
-                except NoSuchElementException:  # if we can't find the elements, then there are no packages to delete
-                    aip_log.warning('No packages to delete')  # log that there are no packages to delete
-                    packages_to_delete = False  # set the flag to false to break the loop
-                    continue  # continue to the next iteration of the loop
-
-                aip_log.info('Found package to delete')  # log the name of the package to delete
-                old_aip = aip  # save the old file name
-
-            else:  # if the file name is the same as the last one, then deletion failed
-                aip_log.error('Failed to delete package: {}'.format(aip))  # log the package that failed to delete
-                packages_to_delete = False  # set the flag to false to break the loop
-                continue  # continue to the next iteration of the loop
-
-        except NoSuchElementException:  # if we can't find the file name cell, then there are no packages to delete
+        else:  # if reason field and approve button missing, no packages to delete
             aip_log.warning('No packages to delete')  # log that there are no packages to delete
             packages_to_delete = False  # set the flag to false to break the loop
             continue  # continue to the next iteration of the loop
@@ -107,6 +99,14 @@ def main():
     driver.close()  # close the browser
     aip_log.info('Deleted {} package(s)'.format(count))  # log the number of packages that were deleted
     aip_log.info('AIP Deletion Complete')  # log that the script is complete
+
+
+def check_if_element_exists(driver, xpath):
+    try:
+        driver.find_element(By.XPATH, xpath)
+    except NoSuchElementException:
+        return False
+    return True
 
 
 if __name__ == '__main__':
