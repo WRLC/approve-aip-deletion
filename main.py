@@ -1,8 +1,9 @@
 from selenium import webdriver
-from selenium.common import NoSuchElementException
+from selenium.common import NoSuchElementException, WebDriverException, TimeoutException
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.common.by import By
 from selenium.webdriver.chrome.options import Options
+from selenium.webdriver.support import expected_conditions as EC
 from logging.handlers import TimedRotatingFileHandler
 import settings
 import sys
@@ -10,7 +11,7 @@ import logging
 
 # AIP Deletion log
 logdir = settings.log_dir  # set the log directory
-log_file = logdir + '/aip_delete.log'  # set the log file
+log_file = './log/aip_delete.log'  # set the log file
 aip_log = logging.getLogger('aip_delete')  # create the scheduler log
 aip_log.setLevel(logging.INFO)  # set the scheduler log level
 file_handler = TimedRotatingFileHandler(log_file, when='midnight')  # create a file handler
@@ -25,13 +26,7 @@ aip_log.addHandler(file_handler)  # add the file handler to the scheduler log
 def main():
     count = 0  # initialize count
     aip_log.info('Starting AIP Deletion')  # log that the script is starting
-
-    # Check if reason text is provided
-    try:
-        reason_text = sys.argv[1]  # get the reason text from the command line
-    except IndexError:  # if no reason text is provided, then exit
-        aip_log.error('Aborting. No reason provided for deleting AIPs')  # log that no reason was provided
-        sys.exit(1)  # exit the script
+    reason_text = 'approve-aip-deletion batch script'  # initialize reason text
 
     # AM Storage Service credentials
     username = settings.am_ss_user['username']
@@ -63,38 +58,65 @@ def main():
         aip_log.info('AM Storage Service login successful')  # log that login was successful
 
     # xpaths to elements in first row of table
-    file = '/html/body/div[2]/div/div[1]/table/tbody/tr[1]/td[1]'  # file name cell
-    old_aip = ''  # old file
-    reason_field = '/html/body/div[2]/div/div[1]/table/tbody/tr[1]/td[7]/form/p/textarea'  # reason field
-    approve_button = '/html/body/div[2]/div/div[1]/table/tbody/tr[1]/td[7]/form/input[2]'  # approve button
+    file = '//*[@id="DataTables_Table_0"]/tbody/tr[1]/td[contains(@class, "sorting_1")]'
+    reason_field = '//*[@id="DataTables_Table_0"]/tbody/tr[1]/td[7]/form/p/textarea[contains(@id, "status_reason")]'
+    approve_button = '//*[@id="DataTables_Table_0"]/tbody/tr[1]/td[7]/form/input[@name="approve"]'
 
-    packages_to_delete = True  # flag to keep the loop going
+    packages_to_delete = True  # flag to keep the deletion loop going
+
+    # Go to package delete request page
+    try:
+        driver.get(settings.am_ss_url + 'packages/package_delete_request/')  # load page
+    except WebDriverException as e:  # if can't load page, abort
+        aip_log.error('Unable to load Package Delete Requests. Aborting. {}'.format(e))  # log the error
+        sys.exit(1)  # exit the script
+
+    # wait for the DOM to load
+    WebDriverWait(driver=driver, timeout=60).until(
+        lambda x: x.execute_script('return document.readyState === "complete"')
+    )
 
     # while there are packages to delete
     while packages_to_delete is True:
 
-        driver.get(settings.am_ss_url + 'packages/package_delete_request/')  # navigate to package delete request page
-
-        # wait the ready state to be complete
-        WebDriverWait(driver=driver, timeout=10).until(
-            lambda x: x.execute_script('return document.readyState === "complete"')
-        )
-
+        # Check whether first row of table contains reason field and approve button
         if check_if_element_exists(driver, reason_field) is True \
                 and check_if_element_exists(driver, approve_button) is True:
+
+            # Delete the package in the first row
             aip = driver.find_element(By.XPATH, file).text  # get the file name
-            reason = driver.find_element(By.XPATH, reason_field)  # get the reason text
-            approve = driver.find_element(By.XPATH, approve_button)  # get the approve button text
-            reason.send_keys(reason_text)  # find field and insert text
-            approve.click()  # find approve button and click
-            aip_log.info('Deleting {}'.format(aip))  # log that the package was deleted
-            count += 1  # increment count
-            continue  # continue to the next iteration of the loop
+            driver.find_element(By.XPATH, reason_field).send_keys(reason_text)  # find reason field and insert text
+            driver.find_element(By.XPATH, approve_button).click()  # find approve button and click
+
+            # Wait for package file to appear in first row
+            try:
+                WebDriverWait(driver=driver, timeout=60).until(
+                    EC.presence_of_element_located((By.XPATH, file))
+                )
+            except TimeoutException:  # if page load times out, abort
+                aip_log.warning('Page load timed out. Aborting.')  # log the error
+                packages_to_delete = False  # set flag to false to exit loop
+                continue  # continue to next iteration of loop
+
+            # look for success message in alert
+            success_message = 'Request approved: Package deleted successfully.'  # success message to look for
+            alert = driver.find_element(  # get the alert text
+                By.XPATH,
+                '/html/body/div[2]/div/div[contains(@class, "alert")]'
+            ).text
+
+            if success_message in alert:  # if we find that success message, then delete was successful
+                aip_log.info('Deleted {}'.format(aip))  # log that the package was deleted
+                count += 1  # increment count
+                continue  # continue to next iteration of loop
+            else:  # otherwise, delete was not successful
+                aip_log.error('Failed to delete {}'.format(aip))
+                continue  # continue to next iteration of loop
 
         else:  # if reason field and approve button missing, no packages to delete
-            aip_log.warning('No packages to delete')  # log that there are no packages to delete
-            packages_to_delete = False  # set the flag to false to break the loop
-            continue  # continue to the next iteration of the loop
+            print('No packages to delete')  # log that there are no packages to delete
+            packages_to_delete = False  # set flag to false to exit loop
+            continue  # continue to next iteration of loop
 
     driver.close()  # close the browser
     aip_log.info('Deleted {} package(s)'.format(count))  # log the number of packages that were deleted
