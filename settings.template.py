@@ -4,5 +4,3 @@ am_ss_user = {
     'username': '<username>',
     'password': '<password>'
 }
-
-log_dir = './log'
