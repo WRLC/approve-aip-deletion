@@ -114,7 +114,7 @@ def main():
                 continue  # continue to next iteration of loop
 
         else:  # if reason field and approve button missing, no packages to delete
-            print('No packages to delete')  # log that there are no packages to delete
+            aip_log.warning('No packages to delete')  # log that there are no packages to delete
             packages_to_delete = False  # set flag to false to exit loop
             continue  # continue to next iteration of loop
 
